@@ -1,0 +1,5 @@
+{
+  "name": "JOGACK (조각)",
+  "description": "A minimal digital sticker maker. Load a photo, choose a mask shape, and export a transparent PNG sticker.",
+  "requestFramePermissions": ["camera"]
+}
