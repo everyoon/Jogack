@@ -126,13 +126,27 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+
     const observer = new ResizeObserver(() => {
       const { width, height } = canvas.getBoundingClientRect();
       if (!width || !height) return;
-      canvas.width = width;
-      canvas.height = height;
+
+      // 기기의 픽셀 비율 (일반 모니터는 1, 고해상도 모니터/모바일은 2~3)
+      const dpr = window.devicePixelRatio || 1;
+
+      // 실제 도화지 해상도를 dpr만큼 크게 설정
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+
+      // 화면에 보이는 CSS 크기는 기존과 동일하게 유지
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+
+      // transform을 계산할 때는 CSS 논리적 픽셀(width, height) 기준이어야
+      // 마우스/터치 드래그 좌표계와 맞아떨어집니다.
       if (imageRef.current) initTransform(imageRef.current, width, height);
     });
+
     observer.observe(canvas);
     return () => observer.disconnect();
   }, [initTransform]);
@@ -153,10 +167,24 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
     if (!canvas || !img || !isImageLoaded) return;
 
     const ctx = canvas.getContext('2d');
-    const { width: cw, height: ch } = canvas;
+    const dpr = window.devicePixelRatio || 1;
+
+    // 클리핑 경로 등은 '화면에 보이는 크기(논리적 픽셀)' 기준으로 계산해야 합니다.
+    const cw = canvas.width / dpr;
+    const ch = canvas.height / dpr;
     const clipPath = getClipPath2D(selectedShape, cw, ch);
 
-    ctx.clearRect(0, 0, cw, ch);
+    // 전체 지우기 (실제 픽셀 기준)
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // 🔥 추가: 이미지 고화질 스무딩 옵션
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+
+    ctx.save();
+    // 🔥 핵심: 도화지 해상도를 키운 만큼, 붓의 크기(좌표계)도 같이 키워줍니다.
+    // 이렇게 하면 아래의 기존 그리기 로직(transform)을 전혀 수정할 필요가 없습니다.
+    ctx.scale(dpr, dpr);
 
     // 배경 이미지
     ctx.save();
@@ -165,7 +193,10 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
     ctx.drawImage(img, 0, 0);
     ctx.restore();
 
-    if (!clipPath) return;
+    if (!clipPath) {
+      ctx.restore(); // 첫 번째 ctx.save()에 대한 짝 맞추기
+      return;
+    }
 
     // 딤 오버레이 (클리핑 밖)
     ctx.save();
@@ -190,6 +221,8 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
     ctx.lineWidth = 2;
     ctx.stroke(clipPath);
     ctx.restore();
+
+    ctx.restore(); // dpr 스케일링 롤백
   }, [selectedShape, transform, isImageLoaded]);
 
   useEffect(() => {
