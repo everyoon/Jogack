@@ -1,85 +1,78 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { ChevronLeft, Download, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
-import { applyClipPath, getShapeRect } from '../utils/shapes';
+import { categories, shapesByCategory } from '../data/index.js';
+import { ChevronLeft, Download } from 'lucide-react';
 import Toast from '../components/Toast';
 
-const categories = [
-  { id: 'square', label: 'SQUARE' },
-  { id: 'circle', label: 'CIRCLE' },
-  { id: 'triangle', label: 'TRIANGLE' },
-  { id: 'stamp', label: 'STAMP' },
-  { id: 'heart', label: 'HEART' },
-];
+// 컴포넌트 밖으로 분리 - 재렌더 때마다 재생성 방지
+const CLIP_SIZE_RATIO = 1;
 
-const shapesByCategory = {
-  square: [
-    { id: 'sq-basic', label: '기본', svg: <rect x="2" y="2" width="36" height="36" rx="0" fill="currentColor"/> },
-    { id: 'sq-rounded', label: '둥근', svg: <rect x="2" y="2" width="36" height="36" rx="8" fill="currentColor"/> },
-  ],
-  circle: [
-    { id: 'ci-circle', label: '원', svg: <circle cx="20" cy="20" r="18" fill="currentColor"/> },
-    { id: 'ci-oval', label: '타원', svg: <ellipse cx="20" cy="20" rx="18" ry="13" fill="currentColor"/> },
-  ],
-  triangle: [
-    { id: 'tr-basic', label: '삼각형', svg: <polygon points="20,2 38,38 2,38" fill="currentColor"/> },
-  ],
-  stamp: [
-    { id: 'st-square', label: '정사각', svg: (
-      <g fill="currentColor">
-        <rect x="4" y="4" width="32" height="32" rx="2"/>
-        <circle cx="4" cy="10" r="2" fill="white"/>
-        <circle cx="4" cy="20" r="2" fill="white"/>
-        <circle cx="4" cy="30" r="2" fill="white"/>
-        <circle cx="36" cy="10" r="2" fill="white"/>
-        <circle cx="36" cy="20" r="2" fill="white"/>
-        <circle cx="36" cy="30" r="2" fill="white"/>
-        <circle cx="10" cy="4" r="2" fill="white"/>
-        <circle cx="20" cy="4" r="2" fill="white"/>
-        <circle cx="30" cy="4" r="2" fill="white"/>
-        <circle cx="10" cy="36" r="2" fill="white"/>
-        <circle cx="20" cy="36" r="2" fill="white"/>
-        <circle cx="30" cy="36" r="2" fill="white"/>
-      </g>
-    )},
-    { id: 'st-land', label: '가로', svg: (
-      <g fill="currentColor">
-        <rect x="4" y="8" width="32" height="24" rx="2"/>
-        <circle cx="4" cy="14" r="2" fill="white"/>
-        <circle cx="4" cy="20" r="2" fill="white"/>
-        <circle cx="4" cy="26" r="2" fill="white"/>
-        <circle cx="36" cy="14" r="2" fill="white"/>
-        <circle cx="36" cy="20" r="2" fill="white"/>
-        <circle cx="36" cy="26" r="2" fill="white"/>
-        <circle cx="10" cy="8" r="2" fill="white"/>
-        <circle cx="20" cy="8" r="2" fill="white"/>
-        <circle cx="30" cy="8" r="2" fill="white"/>
-        <circle cx="10" cy="32" r="2" fill="white"/>
-        <circle cx="20" cy="32" r="2" fill="white"/>
-        <circle cx="30" cy="32" r="2" fill="white"/>
-      </g>
-    )},
-    { id: 'st-port', label: '세로', svg: (
-      <g fill="currentColor">
-        <rect x="8" y="4" width="24" height="32" rx="2"/>
-        <circle cx="8" cy="10" r="2" fill="white"/>
-        <circle cx="8" cy="20" r="2" fill="white"/>
-        <circle cx="8" cy="30" r="2" fill="white"/>
-        <circle cx="32" cy="10" r="2" fill="white"/>
-        <circle cx="32" cy="20" r="2" fill="white"/>
-        <circle cx="32" cy="30" r="2" fill="white"/>
-        <circle cx="14" cy="4" r="2" fill="white"/>
-        <circle cx="20" cy="4" r="2" fill="white"/>
-        <circle cx="26" cy="4" r="2" fill="white"/>
-        <circle cx="14" cy="36" r="2" fill="white"/>
-        <circle cx="20" cy="36" r="2" fill="white"/>
-        <circle cx="26" cy="36" r="2" fill="white"/>
-      </g>
-    )},
-  ],
-  heart: [
-    { id: 'ht-basic', label: '하트', svg: <path d="M 20 38 C 20 38 2 26 2 14 C 2 6 10 2 20 10 C 30 2 38 6 38 14 C 38 26 20 38 20 38 Z" fill="currentColor"/> },
-  ],
-};
+function getClipPath2D(shapeId, cw, ch) {
+  const shape = Object.values(shapesByCategory)
+    .flat()
+    .find((s) => s.id === shapeId);
+  if (!shape) return null;
+
+  const [, , vw, vh] = (shape.viewBox || '0 0 95 95').split(' ').map(Number);
+  const size = Math.min(cw, ch) * CLIP_SIZE_RATIO;
+  const sx = size / vw;
+  const sy = size / vh;
+  const ox = (cw - size) / 2;
+  const oy = (ch - size) / 2;
+
+  const { svg } = shape;
+  const { type, props } = svg;
+
+  if (type === 'path') {
+    const scaled = new Path2D();
+    scaled.addPath(new Path2D(props.d), new DOMMatrix([sx, 0, 0, sy, ox, oy]));
+    return scaled;
+  }
+
+  const p = new Path2D();
+
+  if (type === 'rect') {
+    const x = (Number(props.x) || 0) * sx + ox;
+    const y = (Number(props.y) || 0) * sy + oy;
+    const w = Number(props.width) * sx;
+    const h = Number(props.height) * sy;
+    const rx = Number(props.rx || 0) * sx;
+    rx > 0 ? p.roundRect(x, y, w, h, rx) : p.rect(x, y, w, h);
+  } else if (type === 'circle') {
+    p.arc(Number(props.cx) * sx + ox, Number(props.cy) * sy + oy, Number(props.r) * sx, 0, Math.PI * 2);
+  } else if (type === 'ellipse') {
+    p.ellipse(
+      Number(props.cx) * sx + ox,
+      Number(props.cy) * sy + oy,
+      Number(props.rx) * sx,
+      Number(props.ry) * sy,
+      0,
+      0,
+      Math.PI * 2,
+    );
+  } else if (type === 'polygon') {
+    const pts = props.points
+      .trim()
+      .split(/[\s,]+/)
+      .map(Number);
+    p.moveTo(pts[0] * sx + ox, pts[1] * sy + oy);
+    for (let i = 2; i < pts.length; i += 2) p.lineTo(pts[i] * sx + ox, pts[i + 1] * sy + oy);
+    p.closePath();
+  } else if (type === 'g') {
+    const children = Array.isArray(props.children) ? props.children : [props.children];
+    const rect = children.find((c) => c?.type === 'rect');
+    if (rect) {
+      const { x, y, width, height, rx } = rect.props;
+      const rx_ = Number(rx || 0) * sx;
+      const px = (Number(x) || 0) * sx + ox;
+      const py = (Number(y) || 0) * sy + oy;
+      const pw = Number(width) * sx;
+      const ph = Number(height) * sy;
+      rx_ > 0 ? p.roundRect(px, py, pw, ph, rx_) : p.rect(px, py, pw, ph);
+    }
+  }
+
+  return p;
+}
 
 const EditorScreen = ({ sourceImage, setScreen }) => {
   const canvasRef = useRef(null);
@@ -90,98 +83,120 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
   const [isImageLoaded, setIsImageLoaded] = useState(false);
   const [toastVisible, setToastVisible] = useState(false);
   const minScaleRef = useRef(1);
-
-  function showToast() {
-    setToastVisible(true);
-    setTimeout(() => setToastVisible(false), 2400);
-  }
-
-  // Gesture tracking
   const lastTouch = useRef(null);
   const lastDist = useRef(0);
 
+  const showToast = useCallback(() => {
+    setToastVisible(true);
+    setTimeout(() => setToastVisible(false), 2400);
+  }, []);
+
+  const clamp = (val, min, max) => Math.min(Math.max(val, min), max);
+
+  const clampPosition = useCallback((x, y, scale, cw, ch, img) => {
+    const scaledW = img.width * scale;
+    const scaledH = img.height * scale;
+    return {
+      x: clamp(x, cw - scaledW, 0),
+      y: clamp(y, ch - scaledH, 0),
+    };
+  }, []);
+
+  const initTransform = useCallback((img, cw, ch) => {
+    const scale = Math.max(cw / img.width, ch / img.height);
+    minScaleRef.current = scale;
+    setTransform({
+      x: (cw - img.width * scale) / 2,
+      y: (ch - img.height * scale) / 2,
+      scale,
+    });
+  }, []);
+
+  // 이미지 로드
   useEffect(() => {
     const img = new Image();
     img.src = sourceImage;
     img.onload = () => {
       imageRef.current = img;
       setIsImageLoaded(true);
-      
-      // Initial scale calculation (object-fit: cover)
-      const canvas = canvasRef.current;
-      if (canvas) {
-        const cw = canvas.width;
-        const ch = canvas.height;
-        const iw = img.width;
-        const ih = img.height;
-        
-        const scaleX = cw / iw;
-        const scaleY = ch / ih;
-        const initialScale = Math.max(scaleX, scaleY);
-        minScaleRef.current = initialScale;
-        
-        setTransform({
-          x: (cw - iw * initialScale) / 2,
-          y: (ch - ih * initialScale) / 2,
-          scale: initialScale
-        });
-      }
     };
   }, [sourceImage]);
 
+  // 캔버스 크기 감지 + transform 초기화
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const observer = new ResizeObserver(() => {
+      const { width, height } = canvas.getBoundingClientRect();
+      if (!width || !height) return;
+      canvas.width = width;
+      canvas.height = height;
+      if (imageRef.current) initTransform(imageRef.current, width, height);
+    });
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, [initTransform]);
+
+  // 이미지 로드 후 transform 초기화
+  useEffect(() => {
+    if (!isImageLoaded) return;
+    const canvas = canvasRef.current;
+    if (canvas?.width > 0 && canvas?.height > 0) {
+      initTransform(imageRef.current, canvas.width, canvas.height);
+    }
+  }, [isImageLoaded, initTransform]);
+
+  // 렌더
   const render = useCallback(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !imageRef.current || !isImageLoaded) return;
-    
+    const img = imageRef.current;
+    if (!canvas || !img || !isImageLoaded) return;
+
     const ctx = canvas.getContext('2d');
     const { width: cw, height: ch } = canvas;
-    const img = imageRef.current;
+    const clipPath = getClipPath2D(selectedShape, cw, ch);
 
     ctx.clearRect(0, 0, cw, ch);
 
-    // 1. Draw Image with transform
+    // 배경 이미지
     ctx.save();
     ctx.translate(transform.x, transform.y);
     ctx.scale(transform.scale, transform.scale);
     ctx.drawImage(img, 0, 0);
     ctx.restore();
 
-    // 2. Apply dimming overlay with clip
+    if (!clipPath) return;
+
+    // 딤 오버레이 (클리핑 밖)
     ctx.save();
-    // Create a path for the dimming overlay
-    ctx.beginPath();
-    ctx.rect(0, 0, cw, ch);
-    
-    // Create the shape path to "cut out"
-    // We use even-odd rule to punch a hole
-    applyClipPath(ctx, selectedShape, cw, ch);
-    
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)'; // var(--surface-modal-bg)
-    ctx.fill('evenodd');
+    const overlay = new Path2D();
+    overlay.rect(0, 0, cw, ch);
+    overlay.addPath(clipPath);
+    ctx.fillStyle = 'rgba(39, 38, 34, 0.7)';
+    ctx.fill(overlay, 'evenodd');
     ctx.restore();
 
-    // 3. Optional: Draw a subtle border for the shape
+    // 클리핑 영역 이미지
     ctx.save();
-    ctx.beginPath();
-    applyClipPath(ctx, selectedShape, cw, ch);
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+    ctx.clip(clipPath);
+    ctx.translate(transform.x, transform.y);
+    ctx.scale(transform.scale, transform.scale);
+    ctx.drawImage(img, 0, 0);
+    ctx.restore();
+
+    // 테두리
+    ctx.save();
+    ctx.strokeStyle = 'rgba(239, 233, 220, 0.2)';
     ctx.lineWidth = 2;
-    ctx.stroke();
+    ctx.stroke(clipPath);
     ctx.restore();
-
   }, [selectedShape, transform, isImageLoaded]);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (canvas) {
-      const parent = canvas.parentElement;
-      canvas.width = parent.clientWidth;
-      canvas.height = parent.clientHeight;
-      render();
-    }
+    render();
   }, [render]);
 
-  // Gesture Handlers
+  // 포인터 이벤트
   const handlePointerDown = (e) => {
     e.target.setPointerCapture(e.pointerId);
     lastTouch.current = { x: e.clientX, y: e.clientY };
@@ -189,72 +204,33 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
 
   const handlePointerMove = (e) => {
     if (!lastTouch.current || !imageRef.current) return;
-    
-    const dx = e.clientX - lastTouch.current.x;
-    const dy = e.clientY - lastTouch.current.y;
-    
     const canvas = canvasRef.current;
     const img = imageRef.current;
-    
-    setTransform(prev => {
-      let newX = prev.x + dx;
-      let newY = prev.y + dy;
-      
-      // Clamp X
-      const minX = canvas.width - img.width * prev.scale;
-      const maxX = 0;
-      newX = Math.min(Math.max(newX, minX), maxX);
-      
-      // Clamp Y
-      const minY = canvas.height - img.height * prev.scale;
-      const maxY = 0;
-      newY = Math.min(Math.max(newY, minY), maxY);
-      
-      return {
-        ...prev,
-        x: newX,
-        y: newY
-      };
-    });
-    
+    const dx = e.clientX - lastTouch.current.x;
+    const dy = e.clientY - lastTouch.current.y;
+    setTransform((prev) => ({
+      ...prev,
+      ...clampPosition(prev.x + dx, prev.y + dy, prev.scale, canvas.width, canvas.height, img),
+    }));
     lastTouch.current = { x: e.clientX, y: e.clientY };
   };
 
-  const handlePointerUp = (e) => {
+  const handlePointerUp = () => {
     lastTouch.current = null;
   };
 
   const handleTouchMove = (e) => {
-    if (e.touches.length === 2) {
-      const t1 = e.touches[0];
-      const t2 = e.touches[1];
-      const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
-      
-      if (lastDist.current > 0) {
-        const delta = dist / lastDist.current;
-        setTransform(prev => {
-          const newScale = Math.min(Math.max(prev.scale * delta, minScaleRef.current), 5);
-          
-          // Clamp position after scale change
-          const canvas = canvasRef.current;
-          const img = imageRef.current;
-          
-          let newX = prev.x;
-          let newY = prev.y;
-          
-          const minX = canvas.width - img.width * newScale;
-          const maxX = 0;
-          newX = Math.min(Math.max(newX, minX), maxX);
-          
-          const minY = canvas.height - img.height * newScale;
-          const maxY = 0;
-          newY = Math.min(Math.max(newY, minY), maxY);
-          
-          return { ...prev, scale: newScale, x: newX, y: newY };
-        });
-      }
-      lastDist.current = dist;
+    if (e.touches.length !== 2) return;
+    const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    if (lastDist.current > 0) {
+      const canvas = canvasRef.current;
+      const img = imageRef.current;
+      setTransform((prev) => {
+        const scale = clamp(prev.scale * (dist / lastDist.current), minScaleRef.current, 5);
+        return { scale, ...clampPosition(prev.x, prev.y, scale, canvas.width, canvas.height, img) };
+      });
     }
+    lastDist.current = dist;
   };
 
   const handleTouchEnd = () => {
@@ -263,98 +239,76 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
 
   const handleWheel = (e) => {
     if (!imageRef.current) return;
-    
-    // Determine zoom direction
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    
-    setTransform(prev => {
-      const newScale = Math.min(Math.max(prev.scale * delta, minScaleRef.current), 5);
-      
-      // Clamp position after scale change
-      const canvas = canvasRef.current;
-      const img = imageRef.current;
-      
-      let newX = prev.x;
-      let newY = prev.y;
-      
-      const minX = canvas.width - img.width * newScale;
-      const maxX = 0;
-      newX = Math.min(Math.max(newX, minX), maxX);
-      
-      const minY = canvas.height - img.height * newScale;
-      const maxY = 0;
-      newY = Math.min(Math.max(newY, minY), maxY);
-      
-      return { ...prev, scale: newScale, x: newX, y: newY };
+    const canvas = canvasRef.current;
+    const img = imageRef.current;
+    setTransform((prev) => {
+      const scale = clamp(prev.scale * (e.deltaY > 0 ? 0.9 : 1.1), minScaleRef.current, 5);
+      return { scale, ...clampPosition(prev.x, prev.y, scale, canvas.width, canvas.height, img) };
     });
   };
 
   const exportPNG = async () => {
-    const outputSize = 1000;
+    const SIZE = 1000;
     const canvas = document.createElement('canvas');
-    canvas.width = outputSize;
-    canvas.height = outputSize;
+    canvas.width = SIZE;
+    canvas.height = SIZE;
     const ctx = canvas.getContext('2d');
 
-    // 1. 클립 적용
-    applyClipPath(ctx, selectedShape, outputSize, outputSize);
-    ctx.clip();
+    const clipPath = getClipPath2D(selectedShape, SIZE, SIZE);
+    if (clipPath) ctx.clip(clipPath);
 
-    // 2. 디스플레이 캔버스 대비 스케일 비율 계산
-    const displayCanvas = canvasRef.current;
-    const ratio = outputSize / displayCanvas.width;
-
-    // 3. 이미지 드로잉 (현재 transform 반영)
+    const ratio = SIZE / canvasRef.current.width;
     const img = new Image();
     img.src = sourceImage;
-    await new Promise(res => { img.onload = res; });
+    await new Promise((res) => {
+      img.onload = res;
+    });
+
     ctx.drawImage(
       img,
       transform.x * ratio,
       transform.y * ratio,
       img.naturalWidth * transform.scale * ratio,
-      img.naturalHeight * transform.scale * ratio
+      img.naturalHeight * transform.scale * ratio,
     );
 
-    // 4. PNG blob → 다운로드
-    canvas.toBlob(blob => {
+    canvas.toBlob((blob) => {
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'jogack.png';
+      const a = Object.assign(document.createElement('a'), { href: url, download: 'jogack.png' });
       a.click();
       URL.revokeObjectURL(url);
     }, 'image/png');
 
-    // 5. Toast 표시
     showToast();
   };
 
   return (
-    <div className="fixed inset-0 flex flex-col overflow-hidden" style={{ backgroundColor: 'var(--surface-primary)' }}>
+    <div
+      className="absolute inset-0 flex flex-col overflow-hidden"
+      style={{ backgroundColor: 'var(--surface-primary)' }}
+    >
       {/* Header */}
-      <header className="h-16 flex items-center justify-between px-6 bg-white border-b border-black/5 z-10">
-        <button 
-          onClick={() => setScreen('main')} 
-          className="p-2 -ml-2 text-black/60 hover:text-black transition-colors"
-        >
-          <ChevronLeft size={28} />
+      <header className="h-16 flex-shrink-0 flex items-center justify-between px-5 border-b border-black/5 z-10">
+        <button onClick={() => setScreen('main')} className="icon-btn-base">
+          <ChevronLeft size={24} />
         </button>
-        <h1 className="text-lg font-bold tracking-tight">스티커 만들기</h1>
-        <button 
-          onClick={exportPNG} 
-          className="bg-black text-white px-5 py-2 rounded-full text-sm font-bold active:scale-95 transition-all shadow-md"
-        >
-          저장하기
+        <h1 className="text-lg font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>
+          조각하기
+        </h1>
+        <button onClick={exportPNG} className="icon-btn-base">
+          <Download size={24} />
         </button>
       </header>
 
-      {/* Image Section (58%) */}
-      <section className="h-[58%] bg-[#1a1a1a] relative flex items-center justify-center overflow-hidden">
-        <div className="h-full aspect-square relative shadow-2xl">
-          <canvas 
+      {/* Image Section */}
+      <section
+        className="flex-shrink-0 relative w-full flex items-center justify-center"
+        style={{ height: '50vh', backgroundColor: 'var(--surface-primary)' }}
+      >
+        <div className="relative h-full" style={{ aspectRatio: '1 / 1' }}>
+          <canvas
             ref={canvasRef}
-            className="w-full h-full touch-none"
+            className="absolute inset-0 w-full h-full touch-none"
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
@@ -363,75 +317,48 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
             onTouchEnd={handleTouchEnd}
             onWheel={handleWheel}
           />
-          
-          {/* Zoom Controls Overlay - Hidden on mobile/tablet, shown on desktop */}
-          <div className="absolute bottom-6 right-6 hidden lg:flex flex-col gap-2">
-            <button 
-              className="w-10 h-10 bg-white/10 backdrop-blur-md border border-white/20 rounded-full flex items-center justify-center text-white hover:bg-white/20 transition-colors"
-              onClick={() => handleWheel({ deltaY: -100, preventDefault: () => {} })}
-            >
-              <ZoomIn size={20} />
-            </button>
-            <button 
-              className="w-10 h-10 bg-white/10 backdrop-blur-md border border-white/20 rounded-full flex items-center justify-center text-white hover:bg-white/20 transition-colors"
-              onClick={() => handleWheel({ deltaY: 100, preventDefault: () => {} })}
-            >
-              <ZoomOut size={20} />
-            </button>
-          </div>
         </div>
       </section>
 
-      {/* Object Section (42%) */}
-      <section className="flex-1 bg-white px-6 py-4 flex flex-col overflow-visible">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xs font-bold text-black/40 tracking-widest uppercase">Select Shape</h2>
-          <button 
-            className="text-black/40 hover:text-black transition-colors"
-            onClick={() => setTransform({ x: 0, y: 0, scale: 1 })}
-            title="초기화"
-          >
-            <RotateCcw size={16} />
-          </button>
+      {/* Category */}
+      <section
+        className="flex-1 py-2 flex flex-col overflow-auto min-h-0"
+        style={{ backgroundColor: 'var(--surface-primary)' }}
+      >
+        <div className="flex px-5 items-center justify-between mb-1">
+          <h2 className="body-md tracking-widest" style={{ color: 'var(--text-brand)' }}>
+            조각들
+          </h2>
         </div>
-        
-        {/* Filter Row */}
-        <div className="flex gap-2 overflow-x-auto no-scrollbar py-2 -mx-2 px-2">
-          {categories.map(cat => (
+
+        <div className="w-full flex items-center gap-2 overflow-x-auto no-scrollbar pl-5 py-4 mb-2">
+          {categories.map((cat) => (
             <button
               key={cat.id}
               onClick={() => {
                 setSelectedCategory(cat.id);
                 setSelectedShape(shapesByCategory[cat.id][0].id);
               }}
-              className={`px-4 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap ${
-                selectedCategory === cat.id 
-                ? 'bg-black text-white shadow-lg' 
-                : 'bg-black/5 text-black/40 hover:bg-black/10'
-              }`}
+              className={`filter-btn ${selectedCategory === cat.id ? 'bg-brand' : 'bg-secondary hover:bg-brand/10'}`}
             >
               {cat.label}
             </button>
           ))}
         </div>
 
-        {/* Shape Grid */}
-        <div className="flex gap-4 overflow-x-auto no-scrollbar mt-4 py-4 -mx-2 px-2">
-          {shapesByCategory[selectedCategory].map(shape => (
+        <div className="grid grid-cols-3 gap-8 px-5 place-items-center overflow-y-auto no-scrollbar">
+          {shapesByCategory[selectedCategory].map((shape) => (
             <button
               key={shape.id}
               onClick={() => setSelectedShape(shape.id)}
-              className={`w-20 h-20 flex-shrink-0 rounded-2xl flex items-center justify-center transition-all ${
-                selectedShape === shape.id 
-                ? 'bg-black text-white shadow-xl scale-110 z-10' 
-                : 'bg-black/5 text-black/20 hover:bg-black/10'
+              className={`w-20 h-20 flex items-center justify-center transition-all ${
+                selectedShape === shape.id ? 'bg-brand text-invert' : 'text-primary hover:bg-black/10'
               }`}
+              style={{ borderRadius: 'var(--radius-1)' }}
             >
-              <div className="w-12 h-12 flex items-center justify-center">
-                <svg width="40" height="40" viewBox="0 0 40 40" className="fill-current">
-                  {shape.svg}
-                </svg>
-              </div>
+              <svg width="80" height="80" viewBox={shape.viewBox || '0 0 80 80'} className="fill-current">
+                {shape.svg}
+              </svg>
             </button>
           ))}
         </div>

@@ -20,16 +20,16 @@ const SplashScreen = ({ setScreen }) => {
   };
 
   return (
-    <div 
+    <div
       className="fixed inset-0 flex items-center justify-center"
       style={{ backgroundColor: 'var(--surface-primary)' }}
     >
       <motion.div
         initial={{ y: 0 }}
         animate={isAnimating ? { y: -120 } : { y: 0 }}
-        transition={{ 
-          duration: 0.4, 
-          ease: [0.4, 0, 0.2, 1] 
+        transition={{
+          duration: 0.4,
+          ease: [0.4, 0, 0.2, 1],
         }}
         onAnimationComplete={handleAnimationComplete}
       >

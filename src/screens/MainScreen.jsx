@@ -17,8 +17,8 @@ const MainScreen = ({ setScreen, setSourceImage }) => {
 
   const startCamera = async () => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      console.error("Camera API not supported in this browser/context.");
-      alert("이 브라우저에서는 카메라 기능을 지원하지 않습니다. 앨범에서 불러오기를 이용해주세요.");
+      console.error('Camera API not supported in this browser/context.');
+      alert('이 브라우저에서는 카메라 기능을 지원하지 않습니다. 앨범에서 불러오기를 이용해주세요.');
       fileInputRef.current.click();
       return;
     }
@@ -26,7 +26,7 @@ const MainScreen = ({ setScreen, setSourceImage }) => {
     const constraints = [
       { video: { facingMode: { ideal: 'environment' } } },
       { video: { facingMode: 'user' } },
-      { video: true }
+      { video: true },
     ];
 
     let mediaStream = null;
@@ -47,15 +47,15 @@ const MainScreen = ({ setScreen, setSourceImage }) => {
       setShowCamera(true);
       setCapturedImage(null);
     } else {
-      console.error("All camera access attempts failed:", error);
-      alert("카메라를 찾을 수 없거나 권한이 거부되었습니다. 앨범에서 불러오기를 이용해주세요.");
+      console.error('All camera access attempts failed:', error);
+      alert('카메라를 찾을 수 없거나 권한이 거부되었습니다. 앨범에서 불러오기를 이용해주세요.');
       fileInputRef.current.click();
     }
   };
 
   const stopCamera = () => {
     if (stream) {
-      stream.getTracks().forEach(track => track.stop());
+      stream.getTracks().forEach((track) => track.stop());
     }
     setStream(null);
     setShowCamera(false);
@@ -96,113 +96,71 @@ const MainScreen = ({ setScreen, setSourceImage }) => {
   };
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-between py-20 px-8 relative overflow-hidden" style={{ backgroundColor: 'var(--surface-primary)' }}>
-      {/* Background Pattern (Optional) */}
-      <div className="absolute inset-0 opacity-[0.03] pointer-events-none select-none">
-        <div className="grid grid-cols-12 gap-4 h-full w-full">
-          {Array.from({ length: 48 }).map((_, i) => (
-            <div key={i} className="border-r border-b border-black/20" />
-          ))}
-        </div>
-      </div>
+    <div className="m-5 flex" style={{ backgroundColor: 'var(--surface-primary)' }}>
+      <div className="w-80 my-53 flex-1 flex flex-col items-center justify-center gap-42 z-10">
+        <Logo className=" h-auto" />
 
-      <div className="flex-1 flex flex-col items-center justify-center gap-12 z-10">
-        <Logo className="scale-110" />
-        
-        <div className="flex flex-col gap-4 w-full max-w-xs">
-          <button 
-            className="w-full h-16 bg-black text-white rounded-full flex items-center justify-center gap-3 text-lg font-bold shadow-xl active:scale-95 transition-all hover:bg-black/90"
-            onClick={startCamera}
-          >
+        <div className="flex flex-col gap-4 max-w-xs">
+          <button className="btn-base " onClick={startCamera}>
             <Camera size={24} />
             사진 촬영하기
           </button>
-          
-          <button 
-            className="w-full h-16 bg-white border-2 border-black/10 text-black rounded-full flex items-center justify-center gap-3 text-lg font-bold shadow-md active:scale-95 transition-all hover:bg-stone-50"
-            onClick={() => fileInputRef.current.click()}
-          >
+
+          <button className="btn-base" onClick={() => fileInputRef.current.click()}>
             <Image size={24} />
             앨범에서 선택
           </button>
-          
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            className="hidden" 
-            accept="image/*" 
-            onChange={handleFileChange}
-          />
-        </div>
-      </div>
 
-      <div className="text-center z-10">
-        <p className="text-sm font-medium opacity-40 tracking-wider">
-          © 2026 STICKER STUDIO
-        </p>
+          <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
+        </div>
       </div>
 
       {/* Camera Modal */}
       {showCamera && (
-        <div className="fixed inset-0 z-50 flex flex-col" style={{ backgroundColor: 'var(--surface-invert)' }}>
+        <div className="absolute inset-0 z-50 flex flex-col" style={{ backgroundColor: 'var(--surface-invert)' }}>
           <div className="flex-1 flex items-center justify-center relative overflow-hidden">
             {capturedImage ? (
-              <img 
-                src={capturedImage} 
-                alt="Captured" 
-                className="w-full h-full object-contain"
+              <img
+                src={capturedImage}
+                alt="Captured"
+                className="w-full h-full object-cover"
                 referrerPolicy="no-referrer"
               />
             ) : (
-              <video 
-                ref={videoRef} 
-                autoPlay 
-                playsInline 
-                className="w-full h-full object-cover"
-              />
+              <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
             )}
-            
+
             {/* Camera Overlay (optional, for framing) */}
-            {!capturedImage && (
-              <div className="absolute inset-0 border-[20px] border-black/20 pointer-events-none" />
-            )}
+            {!capturedImage && <div className="absolute inset-0 pointer-events-none" />}
           </div>
-          
-          <div className="h-48 flex items-center justify-center relative bg-black">
+
+          <div
+            className="my-12 w-full flex items-center justify-flex-end relative"
+            style={{ backgroundColor: 'var(--surface-invert)' }}
+          >
             {capturedImage ? (
-              <div className="flex w-full justify-between px-12 items-center">
-                <button 
-                  className="text-white/70 text-lg font-medium hover:text-white transition-colors" 
-                  onClick={retryPhoto}
-                >
-                  다시 찍기
+              <div className="flex w-full justify-between px-0 items-center">
+                <button className="text-invert text-lg font-medium w-1/2" onClick={retryPhoto}>
+                  다시시도
                 </button>
-                <button 
-                  className="bg-white text-black px-10 py-4 rounded-full text-lg font-bold active:scale-95 transition-all shadow-xl" 
-                  onClick={confirmPhoto}
-                >
-                  다음으로
+                <button className="text-invert text-lg font-bold w-1/2" onClick={confirmPhoto}>
+                  다음
                 </button>
               </div>
             ) : (
               <div className="flex w-full items-center justify-between px-10">
                 {/* Cancel Button */}
-                <button 
-                  className="text-white/70 text-lg font-medium hover:text-white transition-colors w-20" 
-                  onClick={stopCamera}
-                >
+                <button className="text-invert text-lg font-medium w-20" onClick={stopCamera}>
                   취소
                 </button>
-                
                 {/* Shutter Button */}
-                <button 
+                <button
                   className="w-20 h-20 rounded-full border-[6px] border-white bg-transparent shadow-lg active:scale-90 transition-transform flex items-center justify-center group"
                   onClick={capturePhoto}
                   aria-label="촬영"
                 >
                   <div className="w-[85%] h-[85%] rounded-full bg-white group-active:bg-white/80 transition-colors" />
                 </button>
-                
                 <div className="w-20" /> {/* Spacer for balance */}
               </div>
             )}

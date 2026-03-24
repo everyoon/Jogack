@@ -5,7 +5,7 @@ const Toast = ({ visible }) => {
 
   return (
     <div className="toast-container">
-      저장되었습니다 ✓
+      저장되었습니다.
       <style>{`
         .toast-container {
           position: fixed;
