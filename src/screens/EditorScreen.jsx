@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { categories, shapesByCategory } from '../data/index.js';
-import { ChevronLeft, Download } from 'lucide-react';
 import Toast from '../components/Toast';
+import EditorHeader from '../components/EditorHeader';
+import ShapeSelector from '../components/ShapeSelector';
+import ResultModal from '../components/ResultModal';
 
-// 컴포넌트 밖으로 분리 - 재렌더 때마다 재생성 방지
 const CLIP_SIZE_RATIO = 1;
 
 function getClipPath2D(shapeId, cw, ch) {
@@ -87,7 +88,6 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
   const initialPinchDist = useRef(0);
   const initialScale = useRef(1);
   const lastTouch = useRef(null);
-  const lastDist = useRef(0);
   const [resultImage, setResultImage] = useState(null);
 
   const showToast = useCallback(() => {
@@ -138,11 +138,9 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
       // 기기의 픽셀 비율 (일반 모니터는 1, 고해상도 모니터/모바일은 2~3)
       const dpr = window.devicePixelRatio || 1;
 
-      // 실제 도화지 해상도를 dpr만큼 크게 설정
       canvas.width = width * dpr;
       canvas.height = height * dpr;
 
-      // 화면에 보이는 CSS 크기는 기존과 동일하게 유지
       canvas.style.width = `${width}px`;
       canvas.style.height = `${height}px`;
 
@@ -173,21 +171,16 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
     const ctx = canvas.getContext('2d');
     const dpr = window.devicePixelRatio || 1;
 
-    // 클리핑 경로 등은 '화면에 보이는 크기(논리적 픽셀)' 기준으로 계산해야 합니다.
     const cw = canvas.width / dpr;
     const ch = canvas.height / dpr;
     const clipPath = getClipPath2D(selectedShape, cw, ch);
 
-    // 전체 지우기 (실제 픽셀 기준)
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // 🔥 추가: 이미지 고화질 스무딩 옵션
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
 
     ctx.save();
-    // 🔥 핵심: 도화지 해상도를 키운 만큼, 붓의 크기(좌표계)도 같이 키워줍니다.
-    // 이렇게 하면 아래의 기존 그리기 로직(transform)을 전혀 수정할 필요가 없습니다.
     ctx.scale(dpr, dpr);
 
     // 배경 이미지
@@ -226,7 +219,7 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
     ctx.stroke(clipPath);
     ctx.restore();
 
-    ctx.restore(); // dpr 스케일링 롤백
+    ctx.restore();
   }, [selectedShape, transform, isImageLoaded]);
 
   useEffect(() => {
@@ -241,10 +234,8 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
     activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
     if (activePointers.current.size === 1) {
-      // 손가락이 1개일 때는 드래그 시작점 저장
       lastTouch.current = { x: e.clientX, y: e.clientY };
     } else if (activePointers.current.size === 2) {
-      // 손가락이 2개일 때는 핀치 줌 시작 거리와 현재 스케일 저장
       const pts = Array.from(activePointers.current.values());
       const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
       initialPinchDist.current = dist;
@@ -253,17 +244,14 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
   };
 
   const handlePointerMove = (e) => {
-    // 캔버스에 등록된 포인터가 아니면 무시
     if (!activePointers.current.has(e.pointerId) || !imageRef.current) return;
 
-    // 현재 포인터 위치 최신화
     activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
     const canvas = canvasRef.current;
     const img = imageRef.current;
 
     if (activePointers.current.size === 1 && lastTouch.current) {
-      // --- 1점 터치: 드래그 ---
       const dx = e.clientX - lastTouch.current.x;
       const dy = e.clientY - lastTouch.current.y;
 
@@ -273,16 +261,13 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
       }));
       lastTouch.current = { x: e.clientX, y: e.clientY };
     } else if (activePointers.current.size === 2) {
-      // --- 2점 터치: 핀치 줌 ---
       const pts = Array.from(activePointers.current.values());
       const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
 
       if (initialPinchDist.current > 0) {
-        // 처음 2개가 닿았을 때의 거리 대비 현재 거리의 비율 계산
         const scaleFactor = dist / initialPinchDist.current;
 
         setTransform((prev) => {
-          // 누적된 이전 스케일에 곱하는 것이 아니라, "터치 시작 시점의 스케일"에 곱해야 널뛰기하지 않습니다.
           const scale = clamp(initialScale.current * scaleFactor, minScaleRef.current, 5);
           return { scale, ...clampPosition(prev.x, prev.y, scale, canvas.width, canvas.height, img) };
         });
@@ -308,24 +293,6 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
     }
   };
 
-  const handleTouchMove = (e) => {
-    if (e.touches.length !== 2) return;
-    const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-    if (lastDist.current > 0) {
-      const canvas = canvasRef.current;
-      const img = imageRef.current;
-      setTransform((prev) => {
-        const scale = clamp(prev.scale * (dist / lastDist.current), minScaleRef.current, 5);
-        return { scale, ...clampPosition(prev.x, prev.y, scale, canvas.width, canvas.height, img) };
-      });
-    }
-    lastDist.current = dist;
-  };
-
-  const handleTouchEnd = () => {
-    lastDist.current = 0;
-  };
-
   const handleWheel = (e) => {
     if (!imageRef.current) return;
     const canvas = canvasRef.current;
@@ -344,7 +311,6 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
   };
 
   const exportPNG = async () => {
-    // --- 캔버스에 그리는 공통 로직 (기존과 동일) ---
     const SIZE = 1000;
     const canvas = document.createElement('canvas');
     canvas.width = SIZE;
@@ -371,20 +337,19 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
       const dataUrl = canvas.toDataURL('image/png');
       setResultImage(dataUrl);
     } else {
-      // 2. 일반 브라우저(크롬, 사파리 등)일 때 -> 즉시 고화질 파일 다운로드
-      // (Blob 방식으로 다운로드해야 파일명이 정확하게 지정됩니다)
+      // 2. 일반 브라우저(크롬, 사파리 등)일 때
       canvas.toBlob((blob) => {
         if (!blob) return;
         const url = URL.createObjectURL(blob);
         const a = Object.assign(document.createElement('a'), {
           href: url,
-          download: 'jogack.png', // 다운로드될 파일명
+          download: 'jogack.png',
         });
         a.click();
-        URL.revokeObjectURL(url); // 메모리 해제
+        URL.revokeObjectURL(url);
       }, 'image/png');
 
-      showToast(); // 즉시 다운로드일 때는 토스트 메시지를 보여줍니다.
+      showToast();
     }
   };
 
@@ -393,20 +358,10 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
       className="absolute inset-0 flex flex-col overflow-hidden"
       style={{ backgroundColor: 'var(--surface-primary)' }}
     >
-      {/* Header */}
-      <header className="h-16 flex-shrink-0 flex items-center justify-between px-5 border-b border-black/5 z-10">
-        <button onClick={() => setScreen('main')} className="icon-btn-base">
-          <ChevronLeft size={24} />
-        </button>
-        <h1 className="text-lg font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>
-          조각하기
-        </h1>
-        <button onClick={exportPNG} className="icon-btn-base">
-          <Download size={24} />
-        </button>
-      </header>
+      {/* header */}
+      <EditorHeader onBack={() => setScreen('main')} onExport={exportPNG} />
 
-      {/* Image Section */}
+      {/* img section */}
       <section
         className="flex-shrink-0 relative w-full flex items-center justify-center"
         style={{ height: '50vh', backgroundColor: 'var(--surface-primary)' }}
@@ -425,84 +380,22 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
         </div>
       </section>
 
-      {/* Category */}
-      <section
-        className="flex-1 py-2 flex flex-col overflow-auto min-h-0"
-        style={{ backgroundColor: 'var(--surface-primary)' }}
-      >
-        <div className="flex px-5 items-center justify-between mb-1">
-          <h2 className="body-md tracking-widest" style={{ color: 'var(--text-brand)' }}>
-            조각들
-          </h2>
-        </div>
+      {/* category section */}
+      <ShapeSelector
+        selectedCategory={selectedCategory}
+        setSelectedCategory={setSelectedCategory}
+        selectedShape={selectedShape}
+        setSelectedShape={setSelectedShape}
+      />
 
-        <div className="w-full flex items-center gap-2 overflow-x-auto no-scrollbar pl-5 py-4 mb-2">
-          {categories.map((cat) => (
-            <button
-              key={cat.id}
-              onClick={() => {
-                setSelectedCategory(cat.id);
-                setSelectedShape(shapesByCategory[cat.id][0].id);
-              }}
-              className={`filter-btn ${selectedCategory === cat.id ? 'bg-brand' : 'bg-secondary hover:bg-brand/10'}`}
-            >
-              {cat.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-3 gap-8 px-5 place-items-center overflow-y-auto no-scrollbar">
-          {shapesByCategory[selectedCategory].map((shape) => (
-            <button
-              key={shape.id}
-              onClick={() => setSelectedShape(shape.id)}
-              className={`w-20 h-20 flex items-center justify-center transition-all ${
-                selectedShape === shape.id ? 'bg-brand text-invert' : 'text-primary hover:bg-black/10'
-              }`}
-              style={{ borderRadius: 'var(--radius-1)' }}
-            >
-              <svg width="80" height="80" viewBox={shape.viewBox || '0 0 80 80'} className="fill-current">
-                {shape.svg}
-              </svg>
-            </button>
-          ))}
-        </div>
-      </section>
+      {/* toast & modal */}
+      <Toast visible={toastVisible} />
+      <ResultModal resultImage={resultImage} onClose={() => setResultImage(null)} />
 
       <style>{`
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
-      <Toast visible={toastVisible} />
-      {resultImage && (
-        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/80 px-5 touch-none">
-          <div className="w-full max-w-sm bg-white rounded-2xl p-6 flex flex-col items-center shadow-2xl">
-            <h3 className="text-xl font-bold mb-2 text-gray-900">조각 완성!</h3>
-            <p className="text-sm text-center mb-5 text-gray-600">
-              아래 이미지를 <strong>길게 눌러서</strong>
-              <br />
-              사진 앱에 저장해 주세요.
-            </p>
-
-            {/* 완성된 이미지 영역 (길게 누르기 가능) */}
-            <div className="w-full aspect-square bg-gray-50 rounded-xl overflow-hidden mb-6 border border-gray-200">
-              <img
-                src={resultImage}
-                alt="완성된 조각"
-                className="w-full h-full object-contain select-none pointer-events-auto"
-                style={{ WebkitTouchCallout: 'default' }} // 아이폰 꾹 누르기 강제 활성화
-              />
-            </div>
-
-            <button
-              onClick={() => setResultImage(null)}
-              className="w-full py-3.5 bg-gray-100 text-gray-800 rounded-xl font-bold text-base hover:bg-gray-200 active:bg-gray-300 transition-colors"
-            >
-              닫기
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
