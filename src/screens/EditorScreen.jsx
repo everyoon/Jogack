@@ -90,6 +90,20 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
   const lastTouch = useRef(null);
   const [resultImage, setResultImage] = useState(null);
 
+  useEffect(() => {
+    window.history.pushState({ page: 'editor' }, '');
+
+    const handlePopState = () => {
+      setScreen('main');
+    };
+
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [setScreen]);
+
   const showToast = useCallback(() => {
     setToastVisible(true);
     setTimeout(() => setToastVisible(false), 2400);
@@ -101,11 +115,13 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
     const scaledW = img.width * scale;
     const scaledH = img.height * scale;
 
-    const minX = -scaledW / 2;
-    const maxX = cw - scaledW / 2;
+    // 이미지가 도화지 밖으로 완전히 사라지지 않도록 최소 100px 여유만 남깁니다.
+    const padding = 100;
+    const minX = -scaledW + padding;
+    const maxX = cw - padding;
 
-    const minY = -scaledH / 2;
-    const maxY = ch - scaledH / 2;
+    const minY = -scaledH + padding;
+    const maxY = ch - padding;
 
     return {
       x: clamp(x, minX, maxX),
@@ -115,17 +131,22 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
 
   const initTransform = useCallback((img, cw, ch) => {
     // Math.max(꽉 차게) 대신 Math.min(다 보이게)로 변경
+
     const scale = Math.min(cw / img.width, ch / img.height);
 
     // 최소 축소 한계치를 현재 스케일의 절반 수준으로 낮춰서 더 작게 축소 가능하도록 허용
-    minScaleRef.current = scale * 0.5;
+
+    minScaleRef.current = scale * 0.8;
 
     setTransform({
       x: (cw - img.width * scale) / 2,
+
       y: (ch - img.height * scale) / 2,
+
       scale,
     });
   }, []);
+
   // 이미지 로드
   useEffect(() => {
     const img = new Image();
@@ -135,42 +156,6 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
       setIsImageLoaded(true);
     };
   }, [sourceImage]);
-
-  // 캔버스 크기 감지 + transform 초기화
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const observer = new ResizeObserver(() => {
-      const { width, height } = canvas.getBoundingClientRect();
-      if (!width || !height) return;
-
-      // 기기의 픽셀 비율 (일반 모니터는 1, 고해상도 모니터/모바일은 2~3)
-      const dpr = window.devicePixelRatio || 1;
-
-      canvas.width = width * dpr;
-      canvas.height = height * dpr;
-
-      canvas.style.width = `${width}px`;
-      canvas.style.height = `${height}px`;
-
-      // transform을 계산할 때는 CSS 논리적 픽셀(width, height) 기준이어야
-      // 마우스/터치 드래그 좌표계와 맞아떨어집니다.
-      if (imageRef.current) initTransform(imageRef.current, width, height);
-    });
-
-    observer.observe(canvas);
-    return () => observer.disconnect();
-  }, [initTransform]);
-
-  // 이미지 로드 후 transform 초기화
-  useEffect(() => {
-    if (!isImageLoaded) return;
-    const canvas = canvasRef.current;
-    if (canvas?.width > 0 && canvas?.height > 0) {
-      initTransform(imageRef.current, canvas.width, canvas.height);
-    }
-  }, [isImageLoaded, initTransform]);
 
   // 렌더
   const render = useCallback(() => {
@@ -232,6 +217,42 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
     ctx.restore();
   }, [selectedShape, transform, isImageLoaded]);
 
+  // 캔버스 크기 감지
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const observer = new ResizeObserver(() => {
+      const { width, height } = canvas.getBoundingClientRect();
+      if (!width || !height) return;
+
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+
+      // 크기가 변하면 위치는 냅두고 다시 그리기만 합니다.
+      render();
+    });
+
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, [render]); // initTransform 의존성 제거
+
+  // 이미지 로드 후 transform 초기화
+  useEffect(() => {
+    if (!isImageLoaded) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    // 캔버스의 실제 물리적 크기 말고, 화면에 보이는 CSS 크기를 가져옵니다.
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      initTransform(imageRef.current, rect.width, rect.height);
+    }
+  }, [isImageLoaded, initTransform]);
+
   useEffect(() => {
     render();
   }, [render]);
@@ -261,13 +282,17 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
     const canvas = canvasRef.current;
     const img = imageRef.current;
 
+    const dpr = window.devicePixelRatio || 1;
+    const cssWidth = canvas.width / dpr;
+    const cssHeight = canvas.height / dpr;
+
     if (activePointers.current.size === 1 && lastTouch.current) {
       const dx = e.clientX - lastTouch.current.x;
       const dy = e.clientY - lastTouch.current.y;
 
       setTransform((prev) => ({
         ...prev,
-        ...clampPosition(prev.x + dx, prev.y + dy, prev.scale, canvas.width, canvas.height, img),
+        ...clampPosition(prev.x + dx, prev.y + dy, prev.scale, cssWidth, cssHeight, img),
       }));
       lastTouch.current = { x: e.clientX, y: e.clientY };
     } else if (activePointers.current.size === 2) {
@@ -279,7 +304,7 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
 
         setTransform((prev) => {
           const scale = clamp(initialScale.current * scaleFactor, minScaleRef.current, 5);
-          return { scale, ...clampPosition(prev.x, prev.y, scale, canvas.width, canvas.height, img) };
+          return { scale, ...clampPosition(prev.x, prev.y, scale, cssWidth, cssHeight, img) };
         });
       }
     }
@@ -307,9 +332,14 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
     if (!imageRef.current) return;
     const canvas = canvasRef.current;
     const img = imageRef.current;
+
+    const dpr = window.devicePixelRatio || 1;
+    const cssWidth = canvas.width / dpr;
+    const cssHeight = canvas.height / dpr;
+
     setTransform((prev) => {
       const scale = clamp(prev.scale * (e.deltaY > 0 ? 0.9 : 1.1), minScaleRef.current, 5);
-      return { scale, ...clampPosition(prev.x, prev.y, scale, canvas.width, canvas.height, img) };
+      return { scale, ...clampPosition(prev.x, prev.y, scale, cssWidth, cssHeight, img) };
     });
   };
 

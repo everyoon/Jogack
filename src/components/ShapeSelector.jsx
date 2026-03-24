@@ -13,7 +13,7 @@ const ShapeSelector = ({ selectedCategory, setSelectedCategory, selectedShape, s
         </h2>
       </div>
 
-      <div className="w-full flex items-center gap-2 overflow-x-auto no-scrollbar pl-5 py-4 mb-2">
+      <div className="w-full flex items-center gap-2 overflow-x-auto no-scrollbar px-5 py-4 mb-2">
         {categories.map((cat) => (
           <button
             key={cat.id}
