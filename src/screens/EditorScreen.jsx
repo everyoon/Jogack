@@ -100,22 +100,32 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
   const clampPosition = useCallback((x, y, scale, cw, ch, img) => {
     const scaledW = img.width * scale;
     const scaledH = img.height * scale;
+
+    const minX = -scaledW / 2;
+    const maxX = cw - scaledW / 2;
+
+    const minY = -scaledH / 2;
+    const maxY = ch - scaledH / 2;
+
     return {
-      x: clamp(x, cw - scaledW, 0),
-      y: clamp(y, ch - scaledH, 0),
+      x: clamp(x, minX, maxX),
+      y: clamp(y, minY, maxY),
     };
   }, []);
 
   const initTransform = useCallback((img, cw, ch) => {
-    const scale = Math.max(cw / img.width, ch / img.height);
-    minScaleRef.current = scale;
+    // Math.max(꽉 차게) 대신 Math.min(다 보이게)로 변경
+    const scale = Math.min(cw / img.width, ch / img.height);
+
+    // 최소 축소 한계치를 현재 스케일의 절반 수준으로 낮춰서 더 작게 축소 가능하도록 허용
+    minScaleRef.current = scale * 0.5;
+
     setTransform({
       x: (cw - img.width * scale) / 2,
       y: (ch - img.height * scale) / 2,
       scale,
     });
   }, []);
-
   // 이미지 로드
   useEffect(() => {
     const img = new Image();
