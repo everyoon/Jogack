@@ -16,29 +16,31 @@ const MainScreen = ({ setScreen, setSourceImage }) => {
   }, [showCamera, stream, capturedImage]);
 
   const startCamera = async () => {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      console.error('Camera API not supported in this browser/context.');
+    if (!navigator.mediaDevices?.getUserMedia) {
       alert('이 브라우저에서는 카메라 기능을 지원하지 않습니다. 앨범에서 불러오기를 이용해주세요.');
       fileInputRef.current.click();
       return;
     }
 
     const constraints = [
-      { video: { facingMode: { ideal: 'environment' } } },
+      {
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 4096 },
+          height: { ideal: 4096 },
+        },
+      },
       { video: { facingMode: 'user' } },
       { video: true },
     ];
 
     let mediaStream = null;
-    let error = null;
-
     for (const constraint of constraints) {
       try {
         mediaStream = await navigator.mediaDevices.getUserMedia(constraint);
         if (mediaStream) break;
       } catch (err) {
-        error = err;
-        console.warn(`Camera constraint failed: ${JSON.stringify(constraint)}`, err.name);
+        console.warn(`Camera constraint failed:`, err.name);
       }
     }
 
@@ -47,16 +49,13 @@ const MainScreen = ({ setScreen, setSourceImage }) => {
       setShowCamera(true);
       setCapturedImage(null);
     } else {
-      console.error('All camera access attempts failed:', error);
       alert('카메라를 찾을 수 없거나 권한이 거부되었습니다. 앨범에서 불러오기를 이용해주세요.');
       fileInputRef.current.click();
     }
   };
 
   const stopCamera = () => {
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-    }
+    stream?.getTracks().forEach((track) => track.stop());
     setStream(null);
     setShowCamera(false);
     setCapturedImage(null);
@@ -65,11 +64,14 @@ const MainScreen = ({ setScreen, setSourceImage }) => {
   const capturePhoto = () => {
     const video = videoRef.current;
     const canvas = document.createElement('canvas');
+
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
+
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const dataURL = canvas.toDataURL('image/png');
+
+    const dataURL = canvas.toDataURL('image/jpeg', 0.95);
     setCapturedImage(dataURL);
   };
 
@@ -85,23 +87,22 @@ const MainScreen = ({ setScreen, setSourceImage }) => {
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setSourceImage(event.target.result);
-        setScreen('editor');
-      };
-      reader.readAsDataURL(file);
-    }
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setSourceImage(event.target.result);
+      setScreen('editor');
+    };
+    reader.readAsDataURL(file);
   };
 
   return (
-    <div className="m-5 flex" style={{ backgroundColor: 'var(--surface-primary)' }}>
-      <div className="w-80 my-53 flex-1 flex flex-col items-center justify-center gap-42 z-10">
-        <Logo className=" h-auto" />
+    <div className="relative w-full h-full flex" style={{ backgroundColor: 'var(--surface-primary)' }}>
+      <div className="flex-1 flex flex-col items-center justify-center gap-10 z-10 px-5">
+        <Logo className="h-auto" />
 
-        <div className="flex flex-col gap-4 max-w-xs">
-          <button className="btn-base " onClick={startCamera}>
+        <div className="flex flex-col items-center j gap-4 w-full max-w-xs">
+          <button className="btn-base" onClick={startCamera}>
             <Camera size={24} />
             사진 촬영하기
           </button>
@@ -117,29 +118,27 @@ const MainScreen = ({ setScreen, setSourceImage }) => {
 
       {/* Camera Modal */}
       {showCamera && (
-        <div className="absolute inset-0 z-50 flex flex-col" style={{ backgroundColor: 'var(--surface-invert)' }}>
-          <div className="flex-1 flex items-center justify-center relative overflow-hidden">
+        <div className="fixed inset-0 z-50 flex flex-col" style={{ backgroundColor: 'var(--surface-invert)' }}>
+          <div className="flex-1 relative overflow-hidden">
             {capturedImage ? (
-              <img
-                src={capturedImage}
-                alt="Captured"
-                className="w-full h-full object-cover"
-                referrerPolicy="no-referrer"
-              />
+              <img src={capturedImage} alt="Captured" className="absolute inset-0 w-full h-full object-cover" />
             ) : (
-              <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="absolute inset-0 w-full h-full object-cover"
+              />
             )}
-
-            {/* Camera Overlay (optional, for framing) */}
-            {!capturedImage && <div className="absolute inset-0 pointer-events-none" />}
           </div>
 
           <div
-            className="my-12 w-full flex items-center justify-flex-end relative"
+            className="py-10 w-full flex items-center justify-center"
             style={{ backgroundColor: 'var(--surface-invert)' }}
           >
             {capturedImage ? (
-              <div className="flex w-full justify-between px-0 items-center">
+              <div className="flex w-full justify-between px-10 items-center">
                 <button className="text-invert text-lg font-medium w-1/2" onClick={retryPhoto}>
                   다시시도
                 </button>
@@ -149,11 +148,9 @@ const MainScreen = ({ setScreen, setSourceImage }) => {
               </div>
             ) : (
               <div className="flex w-full items-center justify-between px-10">
-                {/* Cancel Button */}
                 <button className="text-invert text-lg font-medium w-20" onClick={stopCamera}>
                   취소
                 </button>
-                {/* Shutter Button */}
                 <button
                   className="w-20 h-20 rounded-full border-[6px] border-white bg-transparent shadow-lg active:scale-90 transition-transform flex items-center justify-center group"
                   onClick={capturePhoto}
@@ -161,7 +158,7 @@ const MainScreen = ({ setScreen, setSourceImage }) => {
                 >
                   <div className="w-[85%] h-[85%] rounded-full bg-white group-active:bg-white/80 transition-colors" />
                 </button>
-                <div className="w-20" /> {/* Spacer for balance */}
+                <div className="w-20" />
               </div>
             )}
           </div>
