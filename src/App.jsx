@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import SplashScreen from './screens/SplashScreen';
 import MainScreen from './screens/MainScreen';
 import EditorScreen from './screens/EditorScreen';
+import { Analytics } from '@vercel/analytics/react';
 
 export default function App() {
   const [screen, setScreen] = useState('splash');
@@ -25,6 +26,7 @@ export default function App() {
       <div className="w-full max-w-[1024px] h-full bg-[var(--surface-primary)] overflow-hidden relative">
         {renderScreen()}
       </div>
+      <Analytics />
     </div>
   );
 }
