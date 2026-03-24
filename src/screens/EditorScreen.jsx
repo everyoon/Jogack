@@ -77,8 +77,8 @@ function getClipPath2D(shapeId, cw, ch) {
 const EditorScreen = ({ sourceImage, setScreen }) => {
   const canvasRef = useRef(null);
   const imageRef = useRef(null);
-  const [selectedCategory, setSelectedCategory] = useState('square');
-  const [selectedShape, setSelectedShape] = useState('sq-basic');
+  const [selectedCategory, setSelectedCategory] = useState(() => categories[0].id);
+  const [selectedShape, setSelectedShape] = useState(() => shapesByCategory[categories[0].id][0].id);
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
   const [isImageLoaded, setIsImageLoaded] = useState(false);
   const [toastVisible, setToastVisible] = useState(false);
