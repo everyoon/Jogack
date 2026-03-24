@@ -83,6 +83,9 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
   const [isImageLoaded, setIsImageLoaded] = useState(false);
   const [toastVisible, setToastVisible] = useState(false);
   const minScaleRef = useRef(1);
+  const activePointers = useRef(new Map());
+  const initialPinchDist = useRef(0);
+  const initialScale = useRef(1);
   const lastTouch = useRef(null);
   const lastDist = useRef(0);
 
@@ -232,24 +235,76 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
   // 포인터 이벤트
   const handlePointerDown = (e) => {
     e.target.setPointerCapture(e.pointerId);
-    lastTouch.current = { x: e.clientX, y: e.clientY };
+
+    // 현재 터치된 포인터(손가락/마우스) 등록
+    activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (activePointers.current.size === 1) {
+      // 손가락이 1개일 때는 드래그 시작점 저장
+      lastTouch.current = { x: e.clientX, y: e.clientY };
+    } else if (activePointers.current.size === 2) {
+      // 손가락이 2개일 때는 핀치 줌 시작 거리와 현재 스케일 저장
+      const pts = Array.from(activePointers.current.values());
+      const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      initialPinchDist.current = dist;
+      initialScale.current = transform.scale;
+    }
   };
 
   const handlePointerMove = (e) => {
-    if (!lastTouch.current || !imageRef.current) return;
+    // 캔버스에 등록된 포인터가 아니면 무시
+    if (!activePointers.current.has(e.pointerId) || !imageRef.current) return;
+
+    // 현재 포인터 위치 최신화
+    activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
     const canvas = canvasRef.current;
     const img = imageRef.current;
-    const dx = e.clientX - lastTouch.current.x;
-    const dy = e.clientY - lastTouch.current.y;
-    setTransform((prev) => ({
-      ...prev,
-      ...clampPosition(prev.x + dx, prev.y + dy, prev.scale, canvas.width, canvas.height, img),
-    }));
-    lastTouch.current = { x: e.clientX, y: e.clientY };
+
+    if (activePointers.current.size === 1 && lastTouch.current) {
+      // --- 1점 터치: 드래그 ---
+      const dx = e.clientX - lastTouch.current.x;
+      const dy = e.clientY - lastTouch.current.y;
+
+      setTransform((prev) => ({
+        ...prev,
+        ...clampPosition(prev.x + dx, prev.y + dy, prev.scale, canvas.width, canvas.height, img),
+      }));
+      lastTouch.current = { x: e.clientX, y: e.clientY };
+    } else if (activePointers.current.size === 2) {
+      // --- 2점 터치: 핀치 줌 ---
+      const pts = Array.from(activePointers.current.values());
+      const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+
+      if (initialPinchDist.current > 0) {
+        // 처음 2개가 닿았을 때의 거리 대비 현재 거리의 비율 계산
+        const scaleFactor = dist / initialPinchDist.current;
+
+        setTransform((prev) => {
+          // 누적된 이전 스케일에 곱하는 것이 아니라, "터치 시작 시점의 스케일"에 곱해야 널뛰기하지 않습니다.
+          const scale = clamp(initialScale.current * scaleFactor, minScaleRef.current, 5);
+          return { scale, ...clampPosition(prev.x, prev.y, scale, canvas.width, canvas.height, img) };
+        });
+      }
+    }
   };
 
-  const handlePointerUp = () => {
-    lastTouch.current = null;
+  const handlePointerUp = (e) => {
+    // 화면에서 떨어진 손가락(포인터) 제거
+    activePointers.current.delete(e.pointerId);
+
+    if (activePointers.current.size === 1) {
+      // 두 손가락 중 하나만 뗐다면, 남은 손가락을 기준으로 드래그 좌표 재설정
+      const remainingPointer = Array.from(activePointers.current.values())[0];
+      lastTouch.current = { x: remainingPointer.x, y: remainingPointer.y };
+    } else {
+      lastTouch.current = null;
+    }
+
+    // 손가락이 2개 미만이 되면 핀치 거리 초기화
+    if (activePointers.current.size < 2) {
+      initialPinchDist.current = 0;
+    }
   };
 
   const handleTouchMove = (e) => {
@@ -346,8 +401,7 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
+            onPointerOut={handlePointerUp}
             onWheel={handleWheel}
           />
         </div>
