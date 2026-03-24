@@ -41,6 +41,10 @@ const MainScreen = ({ setScreen, setSourceImage }) => {
         if (mediaStream) break;
       } catch (err) {
         console.warn(`Camera constraint failed:`, err.name);
+
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          break;
+        }
       }
     }
 
