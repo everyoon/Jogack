@@ -88,6 +88,7 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
   const initialScale = useRef(1);
   const lastTouch = useRef(null);
   const lastDist = useRef(0);
+  const [resultImage, setResultImage] = useState(null);
 
   const showToast = useCallback(() => {
     setToastVisible(true);
@@ -335,39 +336,56 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
     });
   };
 
+  const isInAppBrowser = () => {
+    if (typeof window === 'undefined') return false;
+    const ua = navigator.userAgent.toLowerCase();
+    // 카카오톡, 인스타그램, 라인 등을 감지
+    return ua.indexOf('kakaotalk') > -1 || ua.indexOf('instagram') > -1 || ua.indexOf('line') > -1;
+  };
+
   const exportPNG = async () => {
+    // --- 캔버스에 그리는 공통 로직 (기존과 동일) ---
     const SIZE = 1000;
     const canvas = document.createElement('canvas');
     canvas.width = SIZE;
     canvas.height = SIZE;
     const ctx = canvas.getContext('2d');
-
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     const clipPath = getClipPath2D(selectedShape, SIZE, SIZE);
     if (clipPath) ctx.clip(clipPath);
+    const cssWidth = canvasRef.current.getBoundingClientRect().width;
+    const ratio = SIZE / cssWidth;
+    const img = imageRef.current;
+    ctx.save();
+    ctx.scale(ratio, ratio);
+    ctx.translate(transform.x, transform.y);
+    ctx.scale(transform.scale, transform.scale);
+    ctx.drawImage(img, 0, 0);
+    ctx.restore();
+    // ------------------------------------------
 
-    const ratio = SIZE / canvasRef.current.width;
-    const img = new Image();
-    img.src = sourceImage;
-    await new Promise((res) => {
-      img.onload = res;
-    });
+    // 🔥 핵심: 환경에 따른 저장 방식 분기 🔥
+    if (isInAppBrowser()) {
+      // 1. 카카오톡 등 인앱 브라우저일 때 -> '길게 눌러 저장' 모달창
+      const dataUrl = canvas.toDataURL('image/png');
+      setResultImage(dataUrl);
+    } else {
+      // 2. 일반 브라우저(크롬, 사파리 등)일 때 -> 즉시 고화질 파일 다운로드
+      // (Blob 방식으로 다운로드해야 파일명이 정확하게 지정됩니다)
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        const a = Object.assign(document.createElement('a'), {
+          href: url,
+          download: 'jogack.png', // 다운로드될 파일명
+        });
+        a.click();
+        URL.revokeObjectURL(url); // 메모리 해제
+      }, 'image/png');
 
-    ctx.drawImage(
-      img,
-      transform.x * ratio,
-      transform.y * ratio,
-      img.naturalWidth * transform.scale * ratio,
-      img.naturalHeight * transform.scale * ratio,
-    );
-
-    canvas.toBlob((blob) => {
-      const url = URL.createObjectURL(blob);
-      const a = Object.assign(document.createElement('a'), { href: url, download: 'jogack.png' });
-      a.click();
-      URL.revokeObjectURL(url);
-    }, 'image/png');
-
-    showToast();
+      showToast(); // 즉시 다운로드일 때는 토스트 메시지를 보여줍니다.
+    }
   };
 
   return (
@@ -456,6 +474,35 @@ const EditorScreen = ({ sourceImage, setScreen }) => {
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
       <Toast visible={toastVisible} />
+      {resultImage && (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/80 px-5 touch-none">
+          <div className="w-full max-w-sm bg-white rounded-2xl p-6 flex flex-col items-center shadow-2xl">
+            <h3 className="text-xl font-bold mb-2 text-gray-900">조각 완성!</h3>
+            <p className="text-sm text-center mb-5 text-gray-600">
+              아래 이미지를 <strong>길게 눌러서</strong>
+              <br />
+              사진 앱에 저장해 주세요.
+            </p>
+
+            {/* 완성된 이미지 영역 (길게 누르기 가능) */}
+            <div className="w-full aspect-square bg-gray-50 rounded-xl overflow-hidden mb-6 border border-gray-200">
+              <img
+                src={resultImage}
+                alt="완성된 조각"
+                className="w-full h-full object-contain select-none pointer-events-auto"
+                style={{ WebkitTouchCallout: 'default' }} // 아이폰 꾹 누르기 강제 활성화
+              />
+            </div>
+
+            <button
+              onClick={() => setResultImage(null)}
+              className="w-full py-3.5 bg-gray-100 text-gray-800 rounded-xl font-bold text-base hover:bg-gray-200 active:bg-gray-300 transition-colors"
+            >
+              닫기
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
